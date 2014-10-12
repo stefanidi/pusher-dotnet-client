@@ -13,41 +13,21 @@ namespace ExampleApplication
         static Pusher _pusher = null;
         static Channel _chatChannel = null;
         static PresenceChannel _presenceChannel = null;
-        static string _name;
             
         static void Main(string[] args)
         {
-            // Get the user's name
-            Console.WriteLine("What is your name?");
-            _name = Console.ReadLine();
-
             InitPusher();
 
-            // Read input in loop
-            string line;
-
-            do
-            {
-                line = Console.ReadLine();
-
-                if (line == "quit")
-                    break;
-                else
-                    _chatChannel.Trigger("client-my-event", new { message = line, name = _name });            
-
-            } while (line != null);
-
+            Console.ReadLine();
             _pusher.Disconnect();
 
+            Console.ReadLine();
         }
-
-        #region Pusher Initiation / Connection
 
         private static void InitPusher()
         {
-            _pusher = new Pusher("527784eba833ff169524", new PusherOptions() {
-                Authorizer = new HttpAuthorizer("http://localhost:8888/auth/" + HttpUtility.UrlEncode(_name))
-            });
+            _pusher = new Pusher("de504dc5763aeef9ff52", new PusherOptions());
+
             _pusher.Connected += pusher_Connected;
             _pusher.ConnectionStateChanged += _pusher_ConnectionStateChanged;
             _pusher.Connect();
@@ -60,64 +40,36 @@ namespace ExampleApplication
 
         static void pusher_Connected(object sender)
         {
-            // Setup private channel
-            _chatChannel = _pusher.Subscribe("private-channel");
+            _chatChannel = _pusher.Subscribe("order_book");
             _chatChannel.Subscribed += _chatChannel_Subscribed;
-
-            // Setup presence channel
-            _presenceChannel = (PresenceChannel)_pusher.Subscribe("presence-channel");
-            _presenceChannel.Subscribed += _presenceChannel_Subscribed;
-            _presenceChannel.MemberAdded += _presenceChannel_MemberAdded;
-            _presenceChannel.MemberRemoved += _presenceChannel_MemberRemoved;
         }
-
-        #endregion
-
-        #region Presence Channel Events
-
-        static void _presenceChannel_Subscribed(object sender)
-        {
-            ListMembers();
-        }
-
-        static void _presenceChannel_MemberRemoved(object sender)
-        {
-            ListMembers();
-        }
-
-        static void _presenceChannel_MemberAdded(object sender)
-        {
-            ListMembers();
-        }
-
-        #endregion
-
-        #region Chat Channel Events
 
         static void _chatChannel_Subscribed(object sender)
         {
-            Console.WriteLine("Hi " + _name + "! Type 'quit' to exit, otherwise type anything to chat!");
-
-            _chatChannel.Bind("client-my-event", (dynamic data) =>
+            _chatChannel.Bind("data", (dynamic data) =>
             {
-                Console.WriteLine("[" + data.name + "] " + data.message);
+                //Skim Top:
+                var topBidAr = ((Newtonsoft.Json.Linq.JArray)data.bids)[0];
+                var topBid = new Tick() { Price = topBidAr.First.ToObject<decimal>(), Volume = topBidAr.Last.ToObject<decimal>() };
+
+                var topAskAr = ((Newtonsoft.Json.Linq.JArray)data.asks)[0];
+                var topAsk = new Tick() { Price = topAskAr.First.ToObject<decimal>(), Volume = topAskAr.Last.ToObject<decimal>() };
+
+                Console.WriteLine("Top Bids: " + topBid);
+                Console.WriteLine("Top Ask: " + topAsk);
+                _pusher.Disconnect();
             });
         }
 
-        #endregion
-
-        static void ListMembers()
+        public struct Tick
         {
-            List<string> names = new List<string>();
+            public decimal Price;
+            public decimal Volume;
 
-            foreach (var mem in _presenceChannel.Members)
+            public override string ToString()
             {
-                names.Add((string)mem.Value.name);
+                return string.Format("{0} BTC @ {1} USD", Volume, Price);
             }
-
-            Console.WriteLine("[MEMBERS] " + names.Aggregate((i,j) => i + ", " + j ));
         }
-        
     }
-
 }
